@@ -7,6 +7,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License,
 # v. 2.0. If a copy of the MPL was not distributed with this file, You can
 # obtain one at https://mozilla.org/MPL/2.0/.
+from __future__ import annotations
 
 import importlib
 import math
@@ -45,8 +46,7 @@ from hypothesis.internal.conjecture.shrinker import Shrinker, sort_key
 from hypothesis.internal.healthcheck import fail_health_check
 from hypothesis.reporting import base_report, report
 
-if TYPE_CHECKING:
-    from typing_extensions import Final, NoReturn, TypedDict, NotRequired, override
+from typing_extensions import Final, NoReturn, TypedDict, NotRequired, override
 
 MAX_SHRINKS: Final[int] = 500
 CACHE_SIZE: Final[int] = 10000
@@ -710,11 +710,11 @@ class ConjectureRunner:
         assert self.should_generate_more()
         zero_data = self.cached_test_function(bytes(BUFFER_SIZE))
         if zero_data.status > Status.OVERRUN:
-            assert isinstance(zero_data, ConjectureData)
+            assert isinstance(zero_data, ConjectureResult)
             self.__data_cache.pin(zero_data.buffer)
 
         if zero_data.status == Status.OVERRUN or (
-            zero_data.status == Status.VALID and isinstance(zero_data, ConjectureData) and len(zero_data.buffer) * 2 > BUFFER_SIZE
+            zero_data.status == Status.VALID and isinstance(zero_data, ConjectureResult) and len(zero_data.buffer) * 2 > BUFFER_SIZE
         ):
             fail_health_check(
                 self.settings,
@@ -800,8 +800,8 @@ class ConjectureRunner:
                     continue
                 # Because the Status code is greater than Status.VALID, it cannot be
                 # Status.OVERRUN, which guarantees that the minimal_example is a
-                # ConjectureData object.
-                assert isinstance(minimal_example, ConjectureData)
+                # ConjectureResult object.
+                assert isinstance(minimal_example, ConjectureResult)
 
                 consecutive_zero_extend_is_invalid = 0
 
@@ -940,7 +940,7 @@ class ConjectureRunner:
                     failed_mutations += 1
                     continue
 
-                assert isinstance(new_data, ConjectureData)
+                assert isinstance(new_data, ConjectureResult)
                 if (
                     new_data.status >= data.status
                     and data.buffer != new_data.buffer
