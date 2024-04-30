@@ -269,9 +269,9 @@ class Shrinker:
         self,
         engine: "ConjectureRunner",
         initial: ConjectureData,
-        predicate: Optional[Callable[..., bool]],
+        predicate: Optional[Callable[[ConjectureData], bool]],
         *,
-        allow_transition: bool,
+        allow_transition: Optional[bool],
         explain: bool,
         in_target_phase: bool = False,
     ):
@@ -1632,7 +1632,7 @@ class ShrinkPass:
         return True
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.run_with_chooser.__name__
 
 
