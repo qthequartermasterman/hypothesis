@@ -363,9 +363,7 @@ class ConjectureRunner:
 
             if changed:
                 self.save_buffer(data.buffer)
-                data_as_result = data.as_result()
-                assert isinstance(data_as_result, ConjectureResult)
-                self.interesting_examples[key] = data_as_result
+                self.interesting_examples[key] = data.as_result()
                 self.__data_cache.pin(data.buffer)
                 self.shrunk_examples.discard(key)
 
