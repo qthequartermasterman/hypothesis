@@ -145,15 +145,27 @@ def _get_provider(backend: str) -> Union[type, PrimitiveProvider]:
             "Expected one of 'test_function', 'test_case'."
         )
 
+
 class CallStats(TypedDict):
     status: str
     runtime: float
     drawtime: float
     events: List[str]
 
-PhaseStatistics = TypedDict("PhaseStatistics", {"duration-seconds": float, "test-cases": List[CallStats], "distinct-failures": int, "shrinks-successful": int})
-StatisticsDict = TypedDict("StatisticsDict", {"generate-phase": NotRequired[PhaseStatistics], "reuse-phase": NotRequired[PhaseStatistics], "shrink-phase": NotRequired[PhaseStatistics],"stopped-because":NotRequired[str], "targets": NotRequired[Dict[Optional[str], float]]})
-
+PhaseStatistics = TypedDict(
+    "PhaseStatistics",
+    {"duration-seconds": float, "test-cases": List[CallStats], "distinct-failures": int, "shrinks-successful": int},
+)
+StatisticsDict = TypedDict(
+    "StatisticsDict",
+    {
+        "generate-phase": NotRequired[PhaseStatistics],
+        "reuse-phase": NotRequired[PhaseStatistics],
+        "shrink-phase": NotRequired[PhaseStatistics],
+        "stopped-because":NotRequired[str],
+        "targets": NotRequired[Dict[Optional[str], float]],
+     },
+)
 
 
 class ConjectureRunner:
