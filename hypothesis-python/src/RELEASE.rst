@@ -1,3 +1,3 @@
 RELEASE_TYPE: patch
 
-This patch cleans up some internal code.
+This patch adds type annotations to `hypothesis/internal/conjecture/engine.py`.
