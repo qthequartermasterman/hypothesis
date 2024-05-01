@@ -7,6 +7,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public License,
 # v. 2.0. If a copy of the MPL was not distributed with this file, You can
 # obtain one at https://mozilla.org/MPL/2.0/.
+
 from __future__ import annotations
 
 import importlib
@@ -18,8 +19,16 @@ from datetime import timedelta
 from enum import Enum
 from random import Random, getrandbits
 from typing import (
-    TYPE_CHECKING, Union, Optional, Generator, Literal, Dict, List, Callable,
-    overload, FrozenSet, Set, NoReturn,Final,
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Final,
+    Generator,
+    List,
+    Literal,
+    NoReturn,
+    Optional,
+    overload,
 )
 
 import attr
@@ -34,12 +43,20 @@ from hypothesis.internal.conjecture.data import (
     ConjectureData,
     ConjectureResult,
     DataObserver,
+    Example,
     HypothesisProvider,
+    InterestingOrigin,
+    IRNode,
     Overrun,
     PrimitiveProvider,
-    Status, IRNode, _Overrun, InterestingOrigin, Example,
+    Status,
+    _Overrun,
 )
-from hypothesis.internal.conjecture.datatree import DataTree, PreviouslyUnseenBehaviour, TreeRecordingObserver
+from hypothesis.internal.conjecture.datatree import (
+    DataTree,
+    PreviouslyUnseenBehaviour,
+    TreeRecordingObserver,
+)
 from hypothesis.internal.conjecture.junkdrawer import clamp, ensure_free_stackframes
 from hypothesis.internal.conjecture.pareto import NO_SCORE, ParetoFront, ParetoOptimiser
 from hypothesis.internal.conjecture.shrinker import Shrinker, sort_key
@@ -48,13 +65,16 @@ from hypothesis.reporting import base_report, report
 
 if TYPE_CHECKING:
     # We need to use the extended version of TypedDict to use NotRequired, available in py3.11+
-    from typing_extensions import TypedDict, NotRequired, override
+    from typing_extensions import NotRequired, TypedDict, override
+
     from hypothesis.database import ExampleDatabase
 else:
     override = lambda f: f
     from typing import TypedDict
+
     class NotRequired:
         """A runtime placeholder for the NotRequired type, which is not available in Python <3.11."""
+
         def __class_getitem__(cls, item):
             return cls
 
@@ -78,7 +98,7 @@ class HealthCheckState:
     valid_examples: int = attr.ib(default=0)
     invalid_examples: int = attr.ib(default=0)
     overrun_examples: int = attr.ib(default=0)
-    draw_times: "defaultdict[str, list[float]]" = attr.ib(
+    draw_times: defaultdict[str, list[float]] = attr.ib(
         factory=lambda: defaultdict(list)
     )
 
@@ -132,7 +152,7 @@ class RunIsComplete(Exception):
     pass
 
 
-def _get_provider(backend: str) -> Union[type, PrimitiveProvider]:
+def _get_provider(backend: str) -> type | PrimitiveProvider:
     mname, cname = AVAILABLE_PROVIDERS[backend].rsplit(".", 1)
     provider_cls = getattr(importlib.import_module(mname), cname)
     if provider_cls.lifetime == "test_function":
@@ -150,11 +170,17 @@ class CallStats(TypedDict):
     status: str
     runtime: float
     drawtime: float
-    events: List[str]
+    events: list[str]
+
 
 PhaseStatistics = TypedDict(
     "PhaseStatistics",
-    {"duration-seconds": float, "test-cases": List[CallStats], "distinct-failures": int, "shrinks-successful": int},
+    {
+        "duration-seconds": float,
+        "test-cases": List[CallStats],
+        "distinct-failures": int,
+        "shrinks-successful": int,
+    },
 )
 StatisticsDict = TypedDict(
     "StatisticsDict",
@@ -162,9 +188,9 @@ StatisticsDict = TypedDict(
         "generate-phase": NotRequired[PhaseStatistics],
         "reuse-phase": NotRequired[PhaseStatistics],
         "shrink-phase": NotRequired[PhaseStatistics],
-        "stopped-because":NotRequired[str],
+        "stopped-because": NotRequired[str],
         "targets": NotRequired[Dict[Optional[str], float]],
-     },
+    },
 )
 
 
@@ -173,48 +199,50 @@ class ConjectureRunner:
         self,
         test_function: Callable[[ConjectureData], None],
         *,
-        settings:Optional[Settings]=None,
-        random:Optional[Random]=None,
-        database_key:Optional[bytes]=None,
-        ignore_limits:bool=False,
+        settings: Settings | None = None,
+        random: Random | None = None,
+        database_key: bytes | None = None,
+        ignore_limits: bool = False,
     ) -> None:
         self._test_function: Callable[[ConjectureData], None] = test_function
         self.settings: Settings = settings or Settings()
-        self.shrinks:int = 0
-        self.finish_shrinking_deadline: Optional[float] = None
-        self.call_count:int = 0
-        self.valid_examples:int = 0
+        self.shrinks: int = 0
+        self.finish_shrinking_deadline: float | None = None
+        self.call_count: int = 0
+        self.valid_examples: int = 0
         self.random: Random = random or Random(getrandbits(128))
-        self.database_key:Optional[bytes] = database_key
-        self.ignore_limits:bool = ignore_limits
+        self.database_key: bytes | None = database_key
+        self.ignore_limits: bool = ignore_limits
 
         # Global dict of per-phase statistics, and a list of per-call stats
         # which transfer to the global dict at the end of each phase.
         self._current_phase: str = "(not a phase)"
         self.statistics: StatisticsDict = {}
-        self.stats_per_test_case:List[CallStats] = []
+        self.stats_per_test_case: list[CallStats] = []
 
-        self.interesting_examples:Dict[Optional[InterestingOrigin],ConjectureResult] = {}
+        self.interesting_examples: dict[InterestingOrigin | None, ConjectureResult] = {}
         # We use call_count because there may be few possible valid_examples.
-        self.first_bug_found_at:Optional[int] = None
-        self.last_bug_found_at:Optional[int] = None
+        self.first_bug_found_at: int | None = None
+        self.last_bug_found_at: int | None = None
 
-        self.shrunk_examples: Set[Optional[InterestingOrigin]] = set()
+        self.shrunk_examples: set[InterestingOrigin | None] = set()
 
-        self.health_check_state: Optional[HealthCheckState] = None
+        self.health_check_state: HealthCheckState | None = None
 
         self.tree: DataTree = DataTree()
 
-        self.provider: Union[type, PrimitiveProvider] = _get_provider(self.settings.backend)
+        self.provider: type | PrimitiveProvider = _get_provider(self.settings.backend)
 
-        self.best_observed_targets: Dict[Optional[str], float] = defaultdict(lambda: NO_SCORE)
-        self.best_examples_of_observed_targets:Dict[Optional[str],ConjectureResult] = {}
+        self.best_observed_targets: dict[str | None, float] = defaultdict(
+            lambda: NO_SCORE
+        )
+        self.best_examples_of_observed_targets: dict[str | None, ConjectureResult] = {}
 
         # We keep the pareto front in the example database if we have one. This
         # is only marginally useful at present, but speeds up local development
         # because it means that large targets will be quickly surfaced in your
         # testing.
-        self.pareto_front: Optional[ParetoFront]
+        self.pareto_front: ParetoFront | None
         if self.database_key is not None and self.settings.database is not None:
             self.pareto_front = ParetoFront(self.random)
             self.pareto_front.on_evict(self.on_pareto_evict)
@@ -227,8 +255,8 @@ class ConjectureRunner:
         # executed test case.
         self.__data_cache = LRUReusedCache(CACHE_SIZE)
 
-        self.__pending_call_explanation: Optional[str] = None
-        self._switch_to_hypothesis_provider:bool = False
+        self.__pending_call_explanation: str | None = None
+        self._switch_to_hypothesis_provider: bool = False
 
     def explain_next_call_as(self, explanation: str) -> None:
         self.__pending_call_explanation = explanation
@@ -237,7 +265,9 @@ class ConjectureRunner:
         self.__pending_call_explanation = None
 
     @contextmanager
-    def _log_phase_statistics(self, phase: Literal["reuse", "generate", "shrink"]) -> Generator[None, None, None]:
+    def _log_phase_statistics(
+        self, phase: Literal["reuse", "generate", "shrink"]
+    ) -> Generator[None, None, None]:
         self.stats_per_test_case.clear()
         start_time = time.perf_counter()
         try:
@@ -258,7 +288,7 @@ class ConjectureRunner:
     def __tree_is_exhausted(self) -> bool:
         return self.tree.is_exhausted and self.settings.backend == "hypothesis"
 
-    def __stoppable_test_function(self, data:ConjectureData) -> None:
+    def __stoppable_test_function(self, data: ConjectureData) -> None:
         """Run ``self._test_function``, but convert a ``StopTest`` exception
         into a normal return and avoid raising Flaky for RecursionErrors.
         """
@@ -279,7 +309,7 @@ class ConjectureRunner:
                     # correct engine.
                     raise
 
-    def ir_tree_to_data(self, ir_tree_nodes:List[IRNode]) -> ConjectureData:
+    def ir_tree_to_data(self, ir_tree_nodes: list[IRNode]) -> ConjectureData:
         data = ConjectureData.for_ir_tree(ir_tree_nodes)
         self.__stoppable_test_function(data)
         return data
@@ -305,7 +335,7 @@ class ConjectureRunner:
             # the KeyboardInterrupt, never continue to the code below.
             if not interrupted:  # pragma: no branch
                 data.freeze()
-                call_stats:CallStats = {
+                call_stats: CallStats = {
                     "status": data.status.name.lower(),
                     "runtime": data.finish_time - data.start_time,
                     "drawtime": math.fsum(data.draw_times.values()),
@@ -514,18 +544,20 @@ class ConjectureRunner:
                 HealthCheck.too_slow,
             )
 
-    def save_buffer(self, buffer:Union[bytes, bytearray], sub_key:Optional[bytes]=None) -> None:
+    def save_buffer(
+        self, buffer: bytes | bytearray, sub_key: bytes | None = None
+    ) -> None:
         if self.settings.database is not None:
             key = self.sub_key(sub_key)
             if key is None:
                 return
             self.settings.database.save(key, bytes(buffer))
 
-    def downgrade_buffer(self, buffer:Union[bytes, bytearray]) -> None:
+    def downgrade_buffer(self, buffer: bytes | bytearray) -> None:
         if self.settings.database is not None and self.database_key is not None:
             self.settings.database.move(self.database_key, self.secondary_key, buffer)
 
-    def sub_key(self, sub_key:Optional[bytes]) -> Union[bytes, None]:
+    def sub_key(self, sub_key: bytes | None) -> bytes | None:
         if self.database_key is None:
             return None
         if sub_key is None:
@@ -533,14 +565,14 @@ class ConjectureRunner:
         return b".".join((self.database_key, sub_key))
 
     @property
-    def secondary_key(self) -> Union[bytes, None]:
+    def secondary_key(self) -> bytes | None:
         return self.sub_key(b"secondary")
 
     @property
-    def pareto_key(self) -> Union[bytes, None]:
+    def pareto_key(self) -> bytes | None:
         return self.sub_key(b"pareto")
 
-    def debug(self, message:str) -> None:
+    def debug(self, message: str) -> None:
         if self.settings.verbosity >= Verbosity.debug:
             base_report(message)
 
@@ -548,11 +580,11 @@ class ConjectureRunner:
     def report_debug_info(self) -> bool:
         return self.settings.verbosity >= Verbosity.debug
 
-    def debug_data(self, data: Union[ConjectureData, ConjectureResult]) -> None:
+    def debug_data(self, data: ConjectureData | ConjectureResult) -> None:
         if not self.report_debug_info:
             return
 
-        stack: List = [[]]
+        stack: list = [[]]
 
         def go(ex: Example) -> None:
             if ex.length == 0:
@@ -560,7 +592,7 @@ class ConjectureRunner:
             if len(ex.children) == 0:
                 stack[-1].append(int_from_bytes(data.buffer[ex.start : ex.end]))
             else:
-                node: List[int] = []
+                node: list[int] = []
                 stack.append(node)
 
                 for v in ex.children:
@@ -595,7 +627,7 @@ class ConjectureRunner:
             )
 
     @property
-    def database(self) -> Optional[ExampleDatabase]:
+    def database(self) -> ExampleDatabase | None:
         if self.database_key is None:
             return None
         return self.settings.database
@@ -673,7 +705,7 @@ class ConjectureRunner:
                     if data.status == Status.INTERESTING:
                         break
 
-    def exit_with(self, reason:ExitReason) -> None:
+    def exit_with(self, reason: ExitReason) -> None:
         if self.ignore_limits:
             return
         self.statistics["stopped-because"] = reason.describe(self.settings)
@@ -735,7 +767,9 @@ class ConjectureRunner:
             self.__data_cache.pin(zero_data.buffer)
 
         if zero_data.status == Status.OVERRUN or (
-            zero_data.status == Status.VALID and isinstance(zero_data, ConjectureResult) and len(zero_data.buffer) * 2 > BUFFER_SIZE
+            zero_data.status == Status.VALID
+            and isinstance(zero_data, ConjectureResult)
+            and len(zero_data.buffer) * 2 > BUFFER_SIZE
         ):
             fail_health_check(
                 self.settings,
@@ -891,7 +925,7 @@ class ConjectureRunner:
                 self._current_phase = "target"
                 self.optimise_targets()
 
-    def generate_mutations_from(self, data: Union[ConjectureData, ConjectureResult]) -> None:
+    def generate_mutations_from(self, data: ConjectureData | ConjectureResult) -> None:
         # A thing that is often useful but rarely happens by accident is
         # to generate the same value at multiple different points in the
         # test case.
@@ -1041,7 +1075,12 @@ class ConjectureRunner:
             self.shrink_interesting_examples()
         self.exit_with(ExitReason.finished)
 
-    def new_conjecture_data(self, prefix: Union[List[int], bytes, bytearray], max_length:int=BUFFER_SIZE, observer:Optional[DataObserver]=None) -> ConjectureData:
+    def new_conjecture_data(
+        self,
+        prefix: list[int] | bytes | bytearray,
+        max_length: int = BUFFER_SIZE,
+        observer: DataObserver | None = None,
+    ) -> ConjectureData:
         provider = (
             HypothesisProvider if self._switch_to_hypothesis_provider else self.provider
         )
@@ -1057,7 +1096,9 @@ class ConjectureRunner:
             provider=provider,
         )
 
-    def new_conjecture_data_for_buffer(self, buffer: Union[List[int], bytes, bytearray]) -> ConjectureData:
+    def new_conjecture_data_for_buffer(
+        self, buffer: list[int] | bytes | bytearray
+    ) -> ConjectureData:
         return self.new_conjecture_data(buffer, max_length=len(buffer))
 
     def shrink_interesting_examples(self) -> None:
@@ -1101,7 +1142,7 @@ class ConjectureRunner:
                 self.shrink(example, lambda d: d.status == Status.INTERESTING)
                 return
 
-            def predicate(d:ConjectureData) -> bool:
+            def predicate(d: ConjectureData) -> bool:
                 if d.status < Status.INTERESTING:
                     return False
                 return d.interesting_origin == target
@@ -1136,12 +1177,22 @@ class ConjectureRunner:
                     # of this reason for interestingness.
                     self.settings.database.delete(self.secondary_key, c)
 
-    def shrink(self, example: Union[ConjectureData, ConjectureResult], predicate:Optional[Callable[[ConjectureData], bool]]=None, allow_transition:Optional[bool]=None) -> Union[ConjectureData, ConjectureResult]:
+    def shrink(
+        self,
+        example: ConjectureData | ConjectureResult,
+        predicate: Callable[[ConjectureData], bool] | None = None,
+        allow_transition: bool | None = None,
+    ) -> ConjectureData | ConjectureResult:
         s = self.new_shrinker(example, predicate, allow_transition)
         s.shrink()
         return s.shrink_target
 
-    def new_shrinker(self, example:Union[ConjectureData, ConjectureResult], predicate:Optional[Callable[...,bool]]=None, allow_transition:Optional[bool]=None) -> Shrinker:
+    def new_shrinker(
+        self,
+        example: ConjectureData | ConjectureResult,
+        predicate: Callable[..., bool] | None = None,
+        allow_transition: bool | None = None,
+    ) -> Shrinker:
         return Shrinker(
             self,
             example,
@@ -1151,7 +1202,13 @@ class ConjectureRunner:
             in_target_phase=self._current_phase == "target",
         )
 
-    def cached_test_function(self, buffer:Union[List[int], bytes, bytearray], *, error_on_discard:bool=False, extend:int=0) -> Union[ConjectureResult, _Overrun]:
+    def cached_test_function(
+        self,
+        buffer: list[int] | bytes | bytearray,
+        *,
+        error_on_discard: bool = False,
+        extend: int = 0,
+    ) -> ConjectureResult | _Overrun:
         """Checks the tree to see if we've tested this buffer, and returns the
         previous result if we have.
 
@@ -1170,10 +1227,12 @@ class ConjectureRunner:
         max_length = min(BUFFER_SIZE, len(buffer) + extend)
 
         @overload
-        def check_result(result:_Overrun) -> _Overrun: ...
+        def check_result(result: _Overrun) -> _Overrun: ...
         @overload
-        def check_result(result:ConjectureResult) -> ConjectureResult: ...
-        def check_result(result:Union[_Overrun, ConjectureResult]) -> Union[_Overrun, ConjectureResult]:
+        def check_result(result: ConjectureResult) -> ConjectureResult: ...
+        def check_result(
+            result: _Overrun | ConjectureResult,
+        ) -> _Overrun | ConjectureResult:
             assert result is Overrun or (
                 isinstance(result, ConjectureResult) and result.status != Status.OVERRUN
             )
@@ -1229,11 +1288,15 @@ class ConjectureRunner:
         )
         self.test_function(data)
         result = check_result(data.as_result())
-        if extend == 0 or (result is not Overrun and not isinstance(result, _Overrun) and len(result.buffer) <= len(buffer)):
+        if extend == 0 or (
+            result is not Overrun
+            and not isinstance(result, _Overrun)
+            and len(result.buffer) <= len(buffer)
+        ):
             self.__data_cache[buffer] = result
         return result
 
-    def passing_buffers(self, prefix:bytes=b"") -> FrozenSet[bytes]:
+    def passing_buffers(self, prefix: bytes = b"") -> frozenset[bytes]:
         """Return a collection of bytestrings which cause the test to pass.
 
         Optionally restrict this by a certain prefix, which is useful for explain mode.
