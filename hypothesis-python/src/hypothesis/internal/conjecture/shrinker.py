@@ -10,7 +10,7 @@
 
 import math
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 import attr
 
@@ -268,7 +268,7 @@ class Shrinker:
     def __init__(
         self,
         engine: "ConjectureRunner",
-        initial: ConjectureData,
+        initial: Union[ConjectureData, ConjectureResult],
         predicate: Optional[Callable[[ConjectureData], bool]],
         *,
         allow_transition: Optional[bool],

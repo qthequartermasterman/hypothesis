@@ -19,7 +19,7 @@ from enum import Enum
 from random import Random, getrandbits
 from typing import (
     TYPE_CHECKING, Union, Optional, Generator, Literal, Dict, List, Callable,
-    overload, FrozenSet, Set
+    overload, FrozenSet, Set, NoReturn,Final,
 )
 
 import attr
@@ -37,7 +37,7 @@ from hypothesis.internal.conjecture.data import (
     HypothesisProvider,
     Overrun,
     PrimitiveProvider,
-    Status, IRNode, _Overrun, InterestingOrigin,
+    Status, IRNode, _Overrun, InterestingOrigin, Example,
 )
 from hypothesis.internal.conjecture.datatree import DataTree, PreviouslyUnseenBehaviour, TreeRecordingObserver
 from hypothesis.internal.conjecture.junkdrawer import clamp, ensure_free_stackframes
@@ -46,7 +46,18 @@ from hypothesis.internal.conjecture.shrinker import Shrinker, sort_key
 from hypothesis.internal.healthcheck import fail_health_check
 from hypothesis.reporting import base_report, report
 
-from typing_extensions import Final, NoReturn, TypedDict, NotRequired, override
+if TYPE_CHECKING:
+    # We need to use the extended version of TypedDict to use NotRequired, available in py3.11+
+    from typing_extensions import TypedDict, NotRequired, override
+    from hypothesis.database import ExampleDatabase
+else:
+    override = lambda f: f
+    from typing import TypedDict
+    class NotRequired:
+        """A runtime placeholder for the NotRequired type, which is not available in Python <3.11."""
+        def __class_getitem__(cls, item):
+            return cls
+
 
 MAX_SHRINKS: Final[int] = 500
 CACHE_SIZE: Final[int] = 10000
@@ -363,7 +374,7 @@ class ConjectureRunner:
 
             if changed:
                 self.save_buffer(data.buffer)
-                self.interesting_examples[key] = data.as_result()
+                self.interesting_examples[key] = data.as_result()  # type: ignore
                 self.__data_cache.pin(data.buffer)
                 self.shrunk_examples.discard(key)
 
@@ -406,7 +417,7 @@ class ConjectureRunner:
 
         self.record_for_health_check(data)
 
-    def on_pareto_evict(self, data) -> None:
+    def on_pareto_evict(self, data: ConjectureData) -> None:
         self.settings.database.delete(self.pareto_key, data.buffer)
 
     def generate_novel_prefix(self) -> bytes:
@@ -525,19 +536,19 @@ class ConjectureRunner:
     def report_debug_info(self) -> bool:
         return self.settings.verbosity >= Verbosity.debug
 
-    def debug_data(self, data) -> None:
+    def debug_data(self, data: Union[ConjectureData, ConjectureResult]) -> None:
         if not self.report_debug_info:
             return
 
-        stack = [[]]
+        stack: List = [[]]
 
-        def go(ex):
+        def go(ex: Example) -> None:
             if ex.length == 0:
                 return
             if len(ex.children) == 0:
                 stack[-1].append(int_from_bytes(data.buffer[ex.start : ex.end]))
             else:
-                node = []
+                node: List[int] = []
                 stack.append(node)
 
                 for v in ex.children:
@@ -572,7 +583,7 @@ class ConjectureRunner:
             )
 
     @property
-    def database(self):
+    def database(self) -> Optional[ExampleDatabase]:
         if self.database_key is None:
             return None
         return self.settings.database
@@ -868,7 +879,7 @@ class ConjectureRunner:
                 self._current_phase = "target"
                 self.optimise_targets()
 
-    def generate_mutations_from(self, data: ConjectureData) -> None:
+    def generate_mutations_from(self, data: Union[ConjectureData, ConjectureResult]) -> None:
         # A thing that is often useful but rarely happens by accident is
         # to generate the same value at multiple different points in the
         # test case.
@@ -1113,12 +1124,12 @@ class ConjectureRunner:
                     # of this reason for interestingness.
                     self.settings.database.delete(self.secondary_key, c)
 
-    def shrink(self, example: ConjectureData, predicate:Optional[Callable[[ConjectureData], bool]]=None, allow_transition=None) -> Union[ConjectureData, ConjectureResult]:
+    def shrink(self, example: Union[ConjectureData, ConjectureResult], predicate:Optional[Callable[[ConjectureData], bool]]=None, allow_transition:Optional[bool]=None) -> Union[ConjectureData, ConjectureResult]:
         s = self.new_shrinker(example, predicate, allow_transition)
         s.shrink()
         return s.shrink_target
 
-    def new_shrinker(self, example:ConjectureData, predicate:Optional[Callable[...,bool]]=None, allow_transition:Optional[bool]=None) -> Shrinker:
+    def new_shrinker(self, example:Union[ConjectureData, ConjectureResult], predicate:Optional[Callable[...,bool]]=None, allow_transition:Optional[bool]=None) -> Shrinker:
         return Shrinker(
             self,
             example,
